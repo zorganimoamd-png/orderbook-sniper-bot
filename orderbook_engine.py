@@ -83,8 +83,10 @@ class OrderBookAnalyzer:
         bid_walls = metrics["bid_walls"]
         ask_walls = metrics["ask_walls"]
 
-        buffer = config.SL_BUFFER.get(symbol, 1.0)
-        digits = 2 if "XAU" in symbol else 5
+        # تحديد عدد الخانات بدقة: 5 خانات للفوركس، وخانتان للذهب
+        is_gold = "XAU" in symbol or "GOLD" in symbol
+        digits = 2 if is_gold else 5
+        buffer = config.SL_BUFFER.get(symbol, 1.5 if is_gold else 0.0006)
 
         # -------------------------------------------------------------
         # سيناريو الشراء (Bullish Imbalance)
@@ -95,20 +97,22 @@ class OrderBookAnalyzer:
             entry_low = round(min(best_bid, primary_wall.price), digits)
             entry_high = round(best_ask, digits)
 
+            # وقف الخسارة محمي خلف الجدار بهامش Buffer
             stop_loss = round(primary_wall.price - buffer, digits)
             risk = entry_price - stop_loss
 
-            if risk <= 0:
-                stop_loss = round(entry_price - buffer * 1.5, digits)
+            # صمام أمان لمنع أي قيمة سالبة أو غير منطقية
+            min_risk = 0.50 if is_gold else 0.0004
+            if risk <= min_risk or stop_loss <= 0:
+                stop_loss = round(entry_price - (buffer * 2), digits)
                 risk = entry_price - stop_loss
 
-            # احتساب الأهداف بنسبة R:R مضمونة
             tp1 = round(entry_price + (risk * config.MIN_RR_RATIO), digits)
             tp2 = round(entry_price + (risk * 2.5), digits)
             rr = round((tp1 - entry_price) / risk, 2)
 
             rationale = (
-                f"رصد جدار شراء مؤسساتي عند {primary_wall.price} بحجم {primary_wall.volume:.2f}. "
+                f"رصد جدار شراء مؤسساتي عند {primary_wall.price} بحجم {primary_wall.volume:.2f} عقد. "
                 f"مؤشر عدم التوازن (OBI) يسجل ضغطاً شرائياً بنسبة +{obi*100:.1f}%. "
                 f"السعر العادل اللحظي (Micro-Price) يرتفع فوق السعر الحالي."
             )
@@ -141,8 +145,9 @@ class OrderBookAnalyzer:
             stop_loss = round(primary_wall.price + buffer, digits)
             risk = stop_loss - entry_price
 
-            if risk <= 0:
-                stop_loss = round(entry_price + buffer * 1.5, digits)
+            min_risk = 0.50 if is_gold else 0.0004
+            if risk <= min_risk:
+                stop_loss = round(entry_price + (buffer * 2), digits)
                 risk = stop_loss - entry_price
 
             tp1 = round(entry_price - (risk * config.MIN_RR_RATIO), digits)
@@ -150,7 +155,7 @@ class OrderBookAnalyzer:
             rr = round((entry_price - tp1) / risk, 2)
 
             rationale = (
-                f"رصد جدار بيع مؤسساتي عند {primary_wall.price} بحجم {primary_wall.volume:.2f}. "
+                f"رصد جدار بيع مؤسساتي عند {primary_wall.price} بحجم {primary_wall.volume:.2f} عقد. "
                 f"مؤشر عدم التوازن (OBI) يسجل ضغطاً بيعياً بنسبة {obi*100:.1f}%. "
                 f"السعر العادل اللحظي (Micro-Price) ينحدر دون السعر الحالي."
             )
