@@ -1,7 +1,15 @@
 import requests
 import logging
+import sys
+import json
 from orderbook_engine import TradeSignal
 import config
+
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +20,6 @@ class TelegramNotifier:
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
 
     def send_signal(self, signal: TradeSignal) -> bool:
-        """
-        إرسال إشارة التداول المحللة بعمق السوق بتنسيق فاخر
-        """
         message = (
             f"🎯 *إشارة قناص عمق السوق (Market Depth Sniper)* 🎯\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -32,24 +37,15 @@ class TelegramNotifier:
             f"🔬 *تحليل البنية الدقيقة لعمق السوق (L2 Analysis):*\n"
             f"📊 *مؤشر عدم التوازن (OBI):* `{signal.obi_score * 100:+.1f}%`\n"
             f"⚖️ *السعر العادل (Micro-Price):* `{signal.micro_price}`\n"
-            f"🧱 *جدار السيولة المعتمد:* `{signal.wall_price}` (بحجم `{signal.wall_volume}` عقد)\n\n"
+            f"🧱 *جدار السيولة المعتمد:* `{signal.wall_price}` (بحجم `{signal.wall_volume:.1f}` عقد)\n\n"
             f"💡 *أسباب الاقتناص المؤسساتي:*\n_{signal.rationale}_\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"⏱️ *إدارة رأس المال الصارمة هي سر استمرار الأرباح.*"
         )
-
         return self.send_message(message)
 
     def send_message(self, text: str) -> bool:
-        """
-        إرسال رسالة نصية عادية إلى قناة أو مستخدم تليجرام
-        """
         if self.bot_token == "YOUR_BOT_TOKEN_HERE" or self.chat_id == "YOUR_CHAT_ID_HERE":
-            print("\n[تنبيه تليجرام] لم يتم تعيين Telegram Token أو Chat ID بعد.")
-            print("الرسالة التي كانت ستُرسل إلى تليجرام:")
-            print("--------------------------------------------------")
-            print(text)
-            print("--------------------------------------------------\n")
             return False
 
         payload = {
@@ -61,11 +57,9 @@ class TelegramNotifier:
         try:
             res = requests.post(self.base_url, json=payload, timeout=10)
             if res.status_code == 200:
-                print(f"[تليجرام] تم إرسال الإشارة بنجاح.")
+                print("Telegram message sent successfully.")
                 return True
             else:
-                logger.error(f"Telegram API Error: {res.text}")
                 return False
         except Exception as e:
-            logger.error(f"Failed to send to Telegram: {e}")
             return False
