@@ -26,30 +26,24 @@ def run_sniper():
     feed = MarketDataFeed()
     notifier = TelegramNotifier()
 
-    # لتجنب تكرار إرسال نفس الإشارة في فترة قصيرة
     cooldown = {}
 
     while True:
         try:
             for symbol in config.SYMBOLS:
                 current_time = time.time()
-                # منع تكرار الإشارة لنفس الرمز إلا بعد دقيقتين
-                if symbol in cooldown and (current_time - cooldown[symbol]) < 120:
+                # تهدئة 25 ثانية فقط بين الصفقات لنفس الزوج
+                if symbol in cooldown and (current_time - cooldown[symbol]) < 25:
                     continue
 
-                # 1. جلب عمق السوق المباشر
                 bids, asks = feed.get_live_order_book(symbol, depth=config.ORDER_BOOK_DEPTH)
-
-                # 2. تقييم الفرصة واقتناصها
                 signal = analyzer.evaluate_opportunity(symbol, bids, asks)
 
                 if signal:
                     logger.info(f"🎯 تم اقتناص فرصة عالية الجودة على {symbol}: {signal.action} @ {signal.entry_price}")
-                    # إرسال الإشعار لتليجرام
                     notifier.send_signal(signal)
                     cooldown[symbol] = current_time
 
-            # فحص دوري كل ثانيتين لمتابعة تدفق الأوامر السريع
             time.sleep(2)
 
         except KeyboardInterrupt:
