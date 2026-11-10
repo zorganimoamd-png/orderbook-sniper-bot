@@ -83,10 +83,14 @@ class OrderBookAnalyzer:
         bid_walls = metrics["bid_walls"]
         ask_walls = metrics["ask_walls"]
 
-        # تحديد عدد الخانات بدقة: 5 خانات للفوركس، وخانتان للذهب
+        # تحديد نوع الأصل بدقة
+        is_fx = "EUR" in symbol or "GBP" in symbol
         is_gold = "XAU" in symbol or "GOLD" in symbol
-        digits = 2 if is_gold else 5
-        buffer = config.SL_BUFFER.get(symbol, 1.5 if is_gold else 0.0006)
+        is_nasdaq = "USTEC" in symbol or "NAS" in symbol or "NDX" in symbol
+        
+        digits = 5 if is_fx else 2
+        buffer = config.SL_BUFFER.get(symbol, 15.0 if is_nasdaq else (1.5 if is_gold else 0.0006))
+        min_risk = 5.0 if is_nasdaq else (0.50 if is_gold else 0.0004)
 
         # -------------------------------------------------------------
         # سيناريو الشراء (Bullish Imbalance)
@@ -102,7 +106,6 @@ class OrderBookAnalyzer:
             risk = entry_price - stop_loss
 
             # صمام أمان لمنع أي قيمة سالبة أو غير منطقية
-            min_risk = 0.50 if is_gold else 0.0004
             if risk <= min_risk or stop_loss <= 0:
                 stop_loss = round(entry_price - (buffer * 2), digits)
                 risk = entry_price - stop_loss
@@ -145,7 +148,6 @@ class OrderBookAnalyzer:
             stop_loss = round(primary_wall.price + buffer, digits)
             risk = stop_loss - entry_price
 
-            min_risk = 0.50 if is_gold else 0.0004
             if risk <= min_risk:
                 stop_loss = round(entry_price + (buffer * 2), digits)
                 risk = stop_loss - entry_price
