@@ -1,7 +1,7 @@
 import time
 import sys
 import logging
-from orderbook_engine import OrderBookAnalyzer
+from institutional_engine import InstitutionalOrderFlowEngine
 from market_feed import MarketDataFeed
 from telegram_notifier import TelegramNotifier
 from market_hours import MarketHoursFilter
@@ -13,17 +13,17 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-logger = logging.getLogger("SniperBot")
+logger = logging.getLogger("InstitutionalSniper")
 
 def run_sniper():
     print("""
     ===============================================================
-       ⚡ INSTITUTIONAL MARKET DEPTH & DAY-TRADER SNIPER (XAU/FX) ⚡
+       🦅 INSTITUTIONAL SWING ORDER FLOW SNIPER - GOLD & FOREX 🦅
     ===============================================================
-    🚀 البوت الآن في وضع المراقبة الدقيقة لأسواق الذهب والفوركس...
+    🚀 البوت الآن في وضع اقتناص كتل السيولة المؤسساتية وصفقات السوينغ...
     """)
 
-    analyzer = OrderBookAnalyzer(depth=config.ORDER_BOOK_DEPTH)
+    engine = InstitutionalOrderFlowEngine()
     feed = MarketDataFeed()
     notifier = TelegramNotifier()
 
@@ -31,30 +31,29 @@ def run_sniper():
 
     while True:
         try:
-            # 1. صمام الأمان الأول: هل السوق المالي مفتوح اليوم؟
+            # 1. صمام الأمان: منع العمل في عطلة نهاية الأسبوع
             if not MarketHoursFilter.is_market_open():
-                logger.info("⏸️ السوق المالي (الذهب والفوركس) مغلق حالياً لعطلة نهاية الأسبوع (Weekend). البوت في وضع الاستعداد الصامت...")
-                time.sleep(60) # فحص كل دقيقة بهدوء دون أي إرسال
+                logger.info("⏸️ السوق المالي مغلق حالياً (عطلة السبت والأحد). البوت في وضع الاستعداد التام...")
+                time.sleep(60)
                 continue
 
-            # 2. فحص الأصول المعتمدة (الذهب والفوركس فقط)
+            # 2. فحص الذهب والأصول المعتمدة
             for symbol in config.SYMBOLS:
                 current_time = time.time()
                 
-                # صمام الأمان الثاني: منع السبام وتهدئة 30 دقيقة على الأقل لنفس الأصل
-                if symbol in cooldown and (current_time - cooldown[symbol]) < config.SIGNAL_COOLDOWN_SECONDS:
+                # تهدئة 4 ساعات على الأقل بين صفقات السوينغ لنفس الأصل (صفقات سوينغ عميقة لا تتكرر)
+                if symbol in cooldown and (current_time - cooldown[symbol]) < 14400:
                     continue
 
-                bids, asks = feed.get_live_order_book(symbol, depth=config.ORDER_BOOK_DEPTH)
-                signal = analyzer.evaluate_opportunity(symbol, bids, asks)
+                live_price = feed.get_live_base_price(symbol)
+                signal = engine.generate_swing_opportunity(symbol, live_price)
 
                 if signal:
-                    logger.info(f"🎯 تم اقتناص صفقة قناص مؤكدة على {symbol}: {signal.action} @ {signal.entry_price}")
-                    notifier.send_signal(signal)
+                    logger.info(f"🎯 تم رصد صفقة سوينغ مؤسساتية على {symbol}: {signal.action} @ {signal.entry_price} باستهداف {signal.take_profit_1} و {signal.take_profit_2}")
+                    notifier.send_swing_signal(signal)
                     cooldown[symbol] = current_time
 
-            # فحص تدفق الأوامر كل 5 ثوانٍ
-            time.sleep(5)
+            time.sleep(15)
 
         except KeyboardInterrupt:
             logger.info("تم إيقاف البوت بواسطة المستخدم.")
