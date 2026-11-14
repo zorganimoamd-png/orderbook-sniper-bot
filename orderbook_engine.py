@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Dict
+from day_trader_intelligence import DayTraderIntelligence
 import config
 
 @dataclass
@@ -27,6 +28,7 @@ class TradeSignal:
 class OrderBookAnalyzer:
     def __init__(self, depth: int = config.ORDER_BOOK_DEPTH):
         self.depth = depth
+        self.intel = DayTraderIntelligence()
 
     def calculate_metrics(self, bids: List[OrderLevel], asks: List[OrderLevel]) -> Dict:
         if not bids or not asks:
@@ -46,7 +48,6 @@ class OrderBookAnalyzer:
         spread = best_ask - best_bid
         mid_price = (best_bid + best_ask) / 2.0
 
-        # Micro-Price (Volume Weighted Mid Price)
         v_bid_0 = top_bids[0].volume
         v_ask_0 = top_asks[0].volume
         micro_price = (best_bid * v_ask_0 + best_ask * v_bid_0) / (v_bid_0 + v_ask_0) if (v_bid_0 + v_ask_0) > 0 else mid_price
@@ -54,7 +55,6 @@ class OrderBookAnalyzer:
         avg_bid_vol = total_bid_vol / len(top_bids) if top_bids else 1.0
         avg_ask_vol = total_ask_vol / len(top_asks) if top_asks else 1.0
 
-        # جدران السيولة الحقيقية
         bid_walls = [b for b in top_bids if b.volume >= avg_bid_vol * config.LIQUIDITY_WALL_MULTIPLIER]
         ask_walls = [a for a in top_asks if a.volume >= avg_ask_vol * config.LIQUIDITY_WALL_MULTIPLIER]
 
@@ -81,46 +81,50 @@ class OrderBookAnalyzer:
         obi = metrics["obi"]
         best_bid = metrics["best_bid"]
         best_ask = metrics["best_ask"]
-        mid_price = metrics["mid_price"]
+        spread = metrics["spread"]
         micro_price = metrics["micro_price"]
         bid_walls = metrics["bid_walls"]
         ask_walls = metrics["ask_walls"]
 
         is_fx = "EUR" in symbol or "GBP" in symbol
+        is_gold = "XAU" in symbol or "GOLD" in symbol
+        is_nasdaq = "USTEC" in symbol or "NAS" in symbol
         digits = 5 if is_fx else 2
+
         buffer = config.SL_BUFFER.get(symbol, 1.5)
         min_risk_floor = config.MIN_RISK_FLOOR.get(symbol, 1.2)
 
         # =============================================================
-        # 🟢 سيناريو الشراء المؤسساتي القوي (Bullish Sniper Setup)
-        # 1. اختلال توازن لصالح المشترين OBI >= Threshold
-        # 2. وجود جدار دعم مؤسساتي حقيقي
+        # 🟢 سيناريو الشراء (دمج Day-Trader Skill مع عمق السوق L2)
         # =============================================================
         if obi >= config.IMBALANCE_THRESHOLD and len(bid_walls) > 0:
             primary_wall = max(bid_walls, key=lambda w: w.volume)
-            
             entry_price = round(best_ask, digits)
             entry_low = round(min(best_bid, primary_wall.price), digits)
             entry_high = round(best_ask, digits)
 
-            # وقف الخسارة محمي خلف الجدار بهامش Buffer
+            # احتساب الستوب المحمي خلف الجدار
             stop_loss = round(primary_wall.price - buffer, digits)
             risk = entry_price - stop_loss
 
-            # التأكد من أن الستوب ليس ضيقاً بشكل خطير
             if risk < min_risk_floor or stop_loss <= 0:
                 stop_loss = round(entry_price - (min_risk_floor * 1.5), digits)
                 risk = entry_price - stop_loss
 
-            # أهداف ربح مؤسساتية مدروسة: R:R = 1:2 و 1:3.5
+            # فلتر فحص المخاطر من Day-Trader-Risk Gate
+            passed_risk, risk_reason = self.intel.check_pre_trade_risk(symbol, entry_price, stop_loss, spread)
+            if not passed_risk:
+                return None
+
+            # أهداف الـ R-Multiples من Day-Trader Exit (2R و 3.5R)
             tp1 = round(entry_price + (risk * config.MIN_RR_RATIO), digits)
             tp2 = round(entry_price + (risk * 3.5), digits)
             rr = round((tp1 - entry_price) / risk, 2)
 
             rationale = (
-                f"رصد جدار شراء مؤسساتي قوي عند {primary_wall.price} بحجم {primary_wall.volume:.1f} عقد. "
+                f"رصد جدار شراء مؤسساتي عند {primary_wall.price} بحجم {primary_wall.volume:.1f} عقد. "
                 f"مؤشر ضغط تدفق الأوامر (OBI) يسجل تفوقاً شرائياً بنسبة +{obi*100:.1f}%. "
-                f"انحياز السعر العادل (Micro-Price={round(micro_price, digits)}) يدعم اختراق المقاومات القريبة."
+                f"اجتياز كامل لبوابة فحص المخاطر (Risk Gate Passed)."
             )
 
             return TradeSignal(
@@ -140,13 +144,10 @@ class OrderBookAnalyzer:
             )
 
         # =============================================================
-        # 🔴 سيناريو البيع المؤسساتي القوي (Bearish Sniper Setup)
-        # 1. اختلال توازن لصالح البائعين OBI <= -Threshold
-        # 2. وجود جدار مقاومة مؤسساتي حقيقي
+        # 🔴 سيناريو البيع (دمج Day-Trader Skill مع عمق السوق L2)
         # =============================================================
         elif obi <= -config.IMBALANCE_THRESHOLD and len(ask_walls) > 0:
             primary_wall = max(ask_walls, key=lambda w: w.volume)
-
             entry_price = round(best_bid, digits)
             entry_high = round(max(best_ask, primary_wall.price), digits)
             entry_low = round(best_bid, digits)
@@ -158,14 +159,18 @@ class OrderBookAnalyzer:
                 stop_loss = round(entry_price + (min_risk_floor * 1.5), digits)
                 risk = stop_loss - entry_price
 
+            passed_risk, risk_reason = self.intel.check_pre_trade_risk(symbol, entry_price, stop_loss, spread)
+            if not passed_risk:
+                return None
+
             tp1 = round(entry_price - (risk * config.MIN_RR_RATIO), digits)
             tp2 = round(entry_price - (risk * 3.5), digits)
             rr = round((entry_price - tp1) / risk, 2)
 
             rationale = (
-                f"رصد جدار بيع مؤسساتي كثيف عند {primary_wall.price} بحجم {primary_wall.volume:.1f} عقد. "
+                f"رصد جدار بيع مؤسساتي عند {primary_wall.price} بحجم {primary_wall.volume:.1f} عقد. "
                 f"مؤشر ضغط تدفق الأوامر (OBI) يسجل تفوقاً بيعياً بنسبة {obi*100:.1f}%. "
-                f"انحياز السعر العادل (Micro-Price={round(micro_price, digits)}) يدعم كسر مستويات الدعم القريبة."
+                f"اجتياز كامل لبوابة فحص المخاطر (Risk Gate Passed)."
             )
 
             return TradeSignal(
