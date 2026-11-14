@@ -21,11 +21,15 @@ class TelegramNotifier:
 
     def send_swing_signal(self, signal: SwingTradeSignal) -> bool:
         message = (
-            f"🦅 *صفقة سوينغ مؤسساتية - عمق السوق الحقيقي* 🦅\n"
+            f"🦅 *صفقة سوينغ مؤسساتية مؤكدة بإجماع الخبراء* 🦅\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"💎 *الأصل المالي:* `{signal.symbol}`\n"
             f"⚡ *نوع الصفقة:* *{signal.action}*\n"
-            f"📊 *نسبة نجاح الصفقة:* *{signal.win_probability}%* 🎯\n"
+            f"🎯 *نسبة نجاح الصفقة المركبة:* *{signal.win_probability}%* 🏆\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🌐 *إجماع الخبراء والمؤشرات الفنية (26 مؤشراً):*\n"
+            f"⭐ *تصنيف المحللين:* *{signal.expert_rating}*\n"
+            f"🗳️ *تصويت المؤشرات:* `{signal.expert_votes}`\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"📍 *سعر الدخول المباشر:* `{signal.entry_price}`\n"
             f"🎯 *منطقة التمركز (Entry Zone):* `{signal.entry_zone[0]} ➔ {signal.entry_zone[1]}`\n\n"
@@ -35,12 +39,12 @@ class TelegramNotifier:
             f"🚀 *الهدف الثاني (TP2):* `{signal.take_profit_2}` *(استهداف كتل السيولة حتى 4100$+)*\n"
             f"⚖️ *نسبة العائد/المخاطرة (R:R):* `1:{signal.risk_reward_ratio}`\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔬 *تحليل البنية الدقيقة وتدفق الأوامر (L2):*\n"
+            f"🔬 *تحليل عمق السوق وتدفق الأوامر (L2 Order Flow):*\n"
             f"🧱 *كتلة الحوت المؤسساتي:* `{signal.institutional_block_price}` (بحجم `{signal.institutional_volume:.0f}` عقد)\n"
-            f"📊 *مؤشر انحياز تدفق الأوامر (OBI):* `{signal.obi_score * 100:+.1f}%`\n\n"
-            f"💡 *الرؤية والهدف الاستراتيجي:*\n_{signal.rationale}_\n"
+            f"📊 *مؤشر انحياز الأوامر (OBI):* `{signal.obi_score * 100:+.1f}%`\n\n"
+            f"💡 *الرؤية والتحليل الاستراتيجي:*\n_{signal.rationale}_\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ *صفقة سوينغ قصيرة دقيقة: التزم بنقاط الدخول والأهداف.*"
+            f"⚠️ *إدارة رأس المال الصارمة هي سر الاستمرار والأرباح.*"
         )
         return self.send_message(message)
 
@@ -57,7 +61,7 @@ class TelegramNotifier:
         try:
             res = requests.post(self.base_url, json=payload, timeout=10)
             if res.status_code == 200:
-                print("Telegram swing message sent successfully.")
+                print("Telegram consensus message sent successfully.")
                 return True
             else:
                 return False
