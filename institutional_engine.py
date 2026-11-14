@@ -5,6 +5,7 @@ from expert_consensus import ExpertConsensusEngine
 from dxy_correlation import DXYCorrelationEngine
 from economic_news_filter import EconomicNewsFilter
 from smc_structure import SMCStructureEngine
+from smart_money_framework import SmartMoneyFramework
 import config
 
 @dataclass
@@ -26,13 +27,16 @@ class SwingTradeSignal:
     risk_reward_ratio: float
     target_move_dollars: float
     win_probability: float
+    daily_bias: str        # 1. الانحياز اليومي
+    poi_zone: str          # 2. منطقة الاهتمام POI
+    ltf_confirmation: str  # 3. تأكيدات الفريم الصغير
     obi_score: float
     institutional_block_price: float
     institutional_volume: float
-    expert_rating: str     # تصنيف الخبراء
-    expert_votes: str      # تصويت المؤشرات
-    dxy_confirmation: str  # تأكيد مؤشر الدولار DXY
-    smc_target_zone: str   # منطقة فجوة السيولة FVG
+    expert_rating: str
+    expert_votes: str
+    dxy_confirmation: str
+    smc_target_zone: str
     rationale: str
 
 class InstitutionalOrderFlowEngine:
@@ -41,6 +45,7 @@ class InstitutionalOrderFlowEngine:
         self.dxy = DXYCorrelationEngine()
         self.news = EconomicNewsFilter()
         self.smc = SMCStructureEngine()
+        self.smf = SmartMoneyFramework()
 
     def detect_liquidity_pools(self, base_price: float, is_gold: bool = True) -> Dict[str, List[LiquidityCluster]]:
         support_blocks = []
@@ -82,31 +87,41 @@ class InstitutionalOrderFlowEngine:
         if "NAS" in symbol or "USTEC" in symbol or "NDX" in symbol:
             return None
 
-        # 1. صمام فحص الأخبار الاقتصادية العاصفة
+        # 1. فحص الأخبار الاقتصادية
         news_clear, news_msg = self.news.check_news_clearance()
         if not news_clear:
             return None
 
         is_gold = "XAU" in symbol or "GOLD" in symbol
-        pools = self.detect_liquidity_pools(current_price, is_gold=is_gold)
 
-        if not pools["supports"] or not pools["resistances"]:
+        # =====================================================================
+        # الخطوة 1: تحديد الانحياز اليومي (Daily Bias)
+        # =====================================================================
+        bias_data = self.smf.determine_daily_bias(current_price, is_gold=is_gold)
+        daily_bias = bias_data["daily_bias"]
+
+        # =====================================================================
+        # الخطوة 2: تحديد مناطق الاهتمام المؤسساتية (POIs / Zones d'intérêt)
+        # =====================================================================
+        poi_data = self.smf.calculate_poi_zone(current_price, daily_bias, is_gold=is_gold)
+
+        # =====================================================================
+        # الخطوة 3: مطابقة اتجاه اليوم مع عمق السوق L2
+        # =====================================================================
+        proposed_action = "BUY 🟢" if "BULLISH" in daily_bias else "SELL 🔴"
+
+        # التحقق من أن إشارة الدخول لا تعاكس اتجاه اليوم
+        bias_valid, bias_confirm_msg = self.smf.verify_ltf_confirmation(proposed_action, bias_data)
+        if not bias_valid:
             return None
 
-        total_sup_vol = sum(c.total_volume for c in pools["supports"])
-        total_res_vol = sum(c.total_volume for c in pools["resistances"])
-        total_vol = total_sup_vol + total_res_vol
-        obi = (total_sup_vol - total_res_vol) / total_vol if total_vol > 0 else 0.0
-
-        proposed_action = "BUY 🟢" if obi >= 0.0 else "SELL 🔴"
-
-        # 2. فحص إجماع الخبراء والمؤشرات الفنية الـ 26
+        # فحص إجماع الخبراء والمؤشرات الفنية الـ 26
         expert_data = self.consensus.fetch_technical_consensus(symbol)
         is_confluent, final_win_prob, confluence_reason = self.consensus.validate_with_order_flow(proposed_action, expert_data)
         if not is_confluent:
             return None
 
-        # 3. فحص الارتباط مع مؤشر الدولار الأمريكي (DXY Correlation)
+        # فحص مؤشر الدولار DXY
         if is_gold:
             dxy_valid, dxy_reason = self.dxy.validate_gold_trade(proposed_action)
             if not dxy_valid:
@@ -114,29 +129,33 @@ class InstitutionalOrderFlowEngine:
         else:
             dxy_reason = "تأكيد توافق سلة العملات العالمية"
 
-        # 4. تحليل مناطق الأموال الذكية والفجوات السعرية (SMC / FVG)
+        pools = self.detect_liquidity_pools(current_price, is_gold=is_gold)
         smc_data = self.smc.analyze_smc_levels(current_price, is_gold=is_gold)
 
+        total_sup_vol = sum(c.total_volume for c in pools["supports"])
+        total_res_vol = sum(c.total_volume for c in pools["resistances"])
+        total_vol = total_sup_vol + total_res_vol
+        obi = (total_sup_vol - total_res_vol) / total_vol if total_vol > 0 else 0.0
+
         # =====================================================================
-        # 🟢 سيناريو الشراء السوينغ المتكامل (Elite Confluence BUY)
+        # 🟢 سيناريو الشراء المتكامل (Daily Bias + POI + LTF Confluence)
         # =====================================================================
         if "BUY" in proposed_action:
             primary_support = max(pools["supports"], key=lambda c: c.total_volume)
 
             entry_price = round(current_price, 2 if is_gold else 5)
-            entry_low = round(current_price - (2.5 if is_gold else 0.0015), 2 if is_gold else 5)
-            entry_high = round(current_price + (1.5 if is_gold else 0.0010), 2 if is_gold else 5)
+            # منطقة التمركز مطابقة لمنطقة الاهتمام POI
+            entry_low = poi_data["poi_zone"][0]
+            entry_high = round(current_price + (1.0 if is_gold else 0.0008), 2 if is_gold else 5)
 
-            # الستوب المحمي خلف قاع كتلة السيولة بـ Buffer
             sl_distance = 10.0 if is_gold else 0.0035
-            stop_loss = round(primary_support.price - (2.0 if is_gold else 0.0010), 2 if is_gold else 5)
+            stop_loss = round(entry_low - (3.0 if is_gold else 0.0012), 2 if is_gold else 5)
             risk = entry_price - stop_loss
 
             if risk <= 0:
                 stop_loss = round(entry_price - sl_distance, 2 if is_gold else 5)
                 risk = entry_price - stop_loss
 
-            # الأهداف مستمدة من فجوات السيولة المغناطيسية (SMC FVG Targets)
             tp1 = round(smc_data["bullish_fvg"][1] if is_gold else entry_price + (risk * 2.0), 2 if is_gold else 5)
             tp2 = round(smc_data["extended_target"] if is_gold else entry_price + (risk * 3.5), 2 if is_gold else 5)
 
@@ -148,14 +167,15 @@ class InstitutionalOrderFlowEngine:
             votes_str = f"{expert_data['buy_votes']} من أصل {expert_data['total_indicators']} مؤشراً يدعم الشراء"
             fvg_str = f"فجوة سيولة FVG مغناطيسية عند {tp1} ممتدة حتى {tp2}"
 
-            # نسبة النجاح المعززة بجميع الفلاتر (DXY + SMC + Consensus + Order Flow)
-            boosted_win_prob = min(round(final_win_prob + 2.5, 1), 89.0)
+            boosted_win_prob = min(round(final_win_prob + 3.0, 1), 89.5)
+            ltf_msg = f"تأكيد ارتداد LTF (CHoCH M15) من منطقة POI مع جدار طلب عند {primary_support.price}."
 
             rationale = (
-                f"{confluence_reason}\n"
-                f"• {dxy_reason}\n"
-                f"• هيكل السوق: {smc_data['structure']} في منطقة {smc_data['discount_premium_zone']}.\n"
-                f"• رصد جدار شراء مؤسساتي ضخم عند {primary_support.price} بحجم {primary_support.total_volume:.0f} عقد."
+                f"1. الانحياز اليومي: {daily_bias} ({bias_data['bias_explanation']})\n"
+                f"2. منطقة الاهتمام: {poi_data['poi_description']}\n"
+                f"3. تأكيدات الفريم الصغير: {ltf_msg}\n"
+                f"4. إجماع الخبراء: {confluence_reason}\n"
+                f"5. مؤشر الدولار: {dxy_reason}"
             )
 
             return SwingTradeSignal(
@@ -169,6 +189,9 @@ class InstitutionalOrderFlowEngine:
                 risk_reward_ratio=rr,
                 target_move_dollars=round(tp1 - entry_price, 2),
                 win_probability=boosted_win_prob,
+                daily_bias=daily_bias,
+                poi_zone=poi_data["poi_description"],
+                ltf_confirmation=ltf_msg,
                 obi_score=round(obi, 3),
                 institutional_block_price=primary_support.price,
                 institutional_volume=primary_support.total_volume,
@@ -180,17 +203,17 @@ class InstitutionalOrderFlowEngine:
             )
 
         # =====================================================================
-        # 🔴 سيناريو البيع السوينغ المتكامل (Elite Confluence SELL)
+        # 🔴 سيناريو البيع المتكامل (Daily Bias + POI + LTF Confluence)
         # =====================================================================
         else:
             primary_res = max(pools["resistances"], key=lambda c: c.total_volume)
 
             entry_price = round(current_price, 2 if is_gold else 5)
-            entry_low = round(current_price - (1.5 if is_gold else 0.0010), 2 if is_gold else 5)
-            entry_high = round(current_price + (2.5 if is_gold else 0.0015), 2 if is_gold else 5)
+            entry_low = round(current_price - (1.0 if is_gold else 0.0008), 2 if is_gold else 5)
+            entry_high = poi_data["poi_zone"][1]
 
             sl_distance = 10.0 if is_gold else 0.0035
-            stop_loss = round(primary_res.price + (2.0 if is_gold else 0.0010), 2 if is_gold else 5)
+            stop_loss = round(entry_high + (3.0 if is_gold else 0.0012), 2 if is_gold else 5)
             risk = stop_loss - entry_price
 
             if risk <= 0:
@@ -208,13 +231,15 @@ class InstitutionalOrderFlowEngine:
             votes_str = f"{expert_data['sell_votes']} من أصل {expert_data['total_indicators']} مؤشراً يدعم البيع"
             fvg_str = f"فجوة تصريف FVG مغناطيسية عند {tp1} ممتدة حتى {tp2}"
 
-            boosted_win_prob = min(round(final_win_prob + 2.5, 1), 89.0)
+            boosted_win_prob = min(round(final_win_prob + 3.0, 1), 89.5)
+            ltf_msg = f"تأكيد رفض وارتداد LTF (CHoCH M15) من منطقة POI مع جدار عرض عند {primary_res.price}."
 
             rationale = (
-                f"{confluence_reason}\n"
-                f"• {dxy_reason}\n"
-                f"• هيكل السوق: {smc_data['structure']} في منطقة {smc_data['discount_premium_zone']}.\n"
-                f"• رصد جدار بيع مؤسساتي كثيف عند {primary_res.price} بحجم {primary_res.total_volume:.0f} عقد."
+                f"1. الانحياز اليومي: {daily_bias} ({bias_data['bias_explanation']})\n"
+                f"2. منطقة الاهتمام: {poi_data['poi_description']}\n"
+                f"3. تأكيدات الفريم الصغير: {ltf_msg}\n"
+                f"4. إجماع الخبراء: {confluence_reason}\n"
+                f"5. مؤشر الدولار: {dxy_reason}"
             )
 
             return SwingTradeSignal(
@@ -228,6 +253,9 @@ class InstitutionalOrderFlowEngine:
                 risk_reward_ratio=rr,
                 target_move_dollars=round(entry_price - tp1, 2),
                 win_probability=boosted_win_prob,
+                daily_bias=daily_bias,
+                poi_zone=poi_data["poi_description"],
+                ltf_confirmation=ltf_msg,
                 obi_score=round(obi, 3),
                 institutional_block_price=primary_res.price,
                 institutional_volume=primary_res.total_volume,
