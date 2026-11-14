@@ -2,7 +2,7 @@ import requests
 import logging
 import sys
 import json
-from orderbook_engine import TradeSignal
+from institutional_engine import SwingTradeSignal
 import config
 
 try:
@@ -19,28 +19,27 @@ class TelegramNotifier:
         self.chat_id = chat_id
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
 
-    def send_signal(self, signal: TradeSignal) -> bool:
+    def send_swing_signal(self, signal: SwingTradeSignal) -> bool:
         message = (
-            f"🎯 *إشارة قناص عمق السوق (Institutional L2 Sniper)* 🎯\n"
+            f"🦅 *صفقة سوينغ مؤسساتية - عمق السوق الحقيقي* 🦅\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔹 *الأصل المالي:* `{signal.symbol}`\n"
+            f"💎 *الأصل المالي:* `{signal.symbol}`\n"
             f"⚡ *نوع الصفقة:* *{signal.action}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"📍 *سعر الدخول:* `{signal.entry_price}`\n"
-            f"🎯 *منطقة التمركز (Zone):* `{signal.entry_zone[0]} ➔ {signal.entry_zone[1]}`\n\n"
-            f"🛑 *وقف الخسارة (SL):* `{signal.stop_loss}`\n"
-            f"   *(محمي خلف جدار السيولة المؤسساتي)*\n\n"
-            f"🎯 *الهدف الأول (TP1):* `{signal.take_profit_1}` *(تأمين أرباح وحجز جزء)*\n"
-            f"🚀 *الهدف الثاني (TP2):* `{signal.take_profit_2}` *(الهدف الموسع)*\n"
+            f"🎯 *منطقة التمركز المؤسساتي (Zone):* `{signal.entry_zone[0]} ➔ {signal.entry_zone[1]}`\n\n"
+            f"🛑 *وقف الخسارة المحمي (SL):* `{signal.stop_loss}`\n"
+            f"   *(محمي خلف قاع/قمة كتلة السيولة الكبرى بـ Buffer أمان)*\n\n"
+            f"🎯 *الهدف الأول (TP1):* `{signal.take_profit_1}` *(مدى تحرك +{signal.target_move_dollars}$ دولار)*\n"
+            f"🚀 *الهدف الثاني (TP2):* `{signal.take_profit_2}` *(استهداف كتل السيولة الممتدة حتى 4100$+)*\n"
             f"⚖️ *نسبة العائد/المخاطرة (R:R):* `1:{signal.risk_reward_ratio}`\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔬 *تحليل البنية الدقيقة لعمق السوق (Order Flow L2):*\n"
-            f"📊 *مؤشر ضغط الأوامر (OBI):* `{signal.obi_score * 100:+.1f}%`\n"
-            f"⚖️ *السعر العادل اللحظي (Micro-Price):* `{signal.micro_price}`\n"
-            f"🧱 *جدار الحوت المؤسساتي:* `{signal.wall_price}` (بحجم `{signal.wall_volume:.1f}` عقد)\n\n"
-            f"💡 *التحليل والسبب المؤسساتي:*\n_{signal.rationale}_\n"
+            f"🔬 *تحليل تدفق الأوامر والسيولة الكبرى (Order Flow):*\n"
+            f"🧱 *كتلة الحوت المؤسساتي:* `{signal.institutional_block_price}` (بحجم `{signal.institutional_volume:.0f}` عقد)\n"
+            f"📊 *مؤشر انحياز تدفق الأوامر (OBI):* `{signal.obi_score * 100:+.1f}%`\n\n"
+            f"💡 *الرؤية والهدف الاستراتيجي:*\n_{signal.rationale}_\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ *إدارة رأس المال الصارمة هي مفتاح النجاح المستمر.*"
+            f"⚠️ *صفقة سوينغ قصيرة: اترك السعر يتحرك نحو مناطق السيولة بدون استعجال.*"
         )
         return self.send_message(message)
 
@@ -57,7 +56,7 @@ class TelegramNotifier:
         try:
             res = requests.post(self.base_url, json=payload, timeout=10)
             if res.status_code == 200:
-                print("Telegram message sent successfully.")
+                print("Telegram swing message sent successfully.")
                 return True
             else:
                 return False
