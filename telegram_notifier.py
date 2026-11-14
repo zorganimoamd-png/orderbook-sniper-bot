@@ -19,32 +19,30 @@ class TelegramNotifier:
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
 
     def send_swing_signal(self, signal: SwingTradeSignal) -> bool:
-        # استخدام HTML بدلاً من Markdown لمنع أي خطأ في الحروف الخاصة
         html_message = (
-            f"👑 <b>صفقة سوينغ نخبوية متكاملة (Elite Institutional Confluence)</b> 👑\n"
+            f"🏛️ <b>إشارة سوينغ ثلاثية التأكيد (Daily Bias + POI + LTF)</b> 🏛️\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"💎 <b>الأصل المالي:</b> <code>{signal.symbol}</code>\n"
             f"⚡ <b>نوع الصفقة:</b> <b>{signal.action}</b>\n"
             f"🎯 <b>نسبة نجاح الصفقة المركبة:</b> <b>{signal.win_probability}%</b> 🏆\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🌐 <b>إجماع الخبراء والمؤشرات الفنية (26 مؤشراً):</b>\n"
-            f"⭐ <b>تصنيف المحللين:</b> <b>{signal.expert_rating}</b>\n"
-            f"🗳️ <b>تصويت المؤشرات:</b> <code>{signal.expert_votes}</code>\n"
-            f"💵 <b>تأكيد مؤشر الدولار (DXY):</b> <i>{signal.dxy_confirmation}</i>\n"
+            f"🧭 <b>1. الانحياز اليومي (Daily Bias):</b> <b>{signal.daily_bias}</b>\n"
+            f"📍 <b>2. منطقة الاهتمام (POI):</b> <code>{signal.poi_zone}</code>\n"
+            f"⚡ <b>3. تأكيد الفريم الصغير (LTF):</b> <i>{signal.ltf_confirmation}</i>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📍 <b>سعر الدخول المباشر:</b> <code>{signal.entry_price}</code>\n"
-            f"🎯 <b>منطقة التمركز المؤسساتي (Zone):</b> <code>{signal.entry_zone[0]} ➔ {signal.entry_zone[1]}</code>\n\n"
+            f"📍 <b>سعر الدخول:</b> <code>{signal.entry_price}</code>\n"
+            f"🎯 <b>منطقة التمركز (Zone):</b> <code>{signal.entry_zone[0]} ➔ {signal.entry_zone[1]}</code>\n\n"
             f"🛑 <b>وقف الخسارة المحمي (SL):</b> <code>{signal.stop_loss}</code>\n"
-            f"   <i>(محمي خلف جدار السيولة المؤسساتي بـ Buffer أمان)</i>\n\n"
+            f"   <i>(محمي أسفل/أعلى منطقة الاهتمام بـ Buffer أمان)</i>\n\n"
             f"🎯 <b>الهدف الأول (TP1):</b> <code>{signal.take_profit_1}</code> <i>(تحرك سوينغ +{signal.target_move_dollars}$ دولار)</i>\n"
             f"🚀 <b>الهدف الثاني (TP2):</b> <code>{signal.take_profit_2}</code> <i>(استهداف كتل السيولة حتى 4100$+)</i>\n"
             f"⚖️ <b>نسبة العائد/المخاطرة (R:R):</b> <code>1:{signal.risk_reward_ratio}</code>\n"
-            f"🧲 <b>مناطق السيولة والفجوات السعرية (SMC/FVG):</b>\n<code>{signal.smc_target_zone}</code>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔬 <b>عمق السوق وتدفق الأوامر (L2 Order Flow):</b>\n"
-            f"🧱 <b>كتلة الحوت المؤسساتي:</b> <code>{signal.institutional_block_price}</code> (بحجم <code>{signal.institutional_volume:.0f}</code> عقد)\n"
-            f"📊 <b>انحياز تدفق الأوامر (OBI):</b> <code>{signal.obi_score * 100:+.1f}%</code>\n\n"
-            f"💡 <b>التحليل والرؤية الاستراتيجية:</b>\n<i>{signal.rationale}</i>\n"
+            f"🌐 <b>إجماع الخبراء (26 مؤشراً):</b> <b>{signal.expert_rating}</b> (<code>{signal.expert_votes}</code>)\n"
+            f"💵 <b>تأكيد مؤشر الدولار (DXY):</b> <i>{signal.dxy_confirmation}</i>\n"
+            f"🧱 <b>كتلة عمق السوق المؤسساتي:</b> <code>{signal.institutional_block_price}</code> ({signal.institutional_volume:.0f} عقد)\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 <b>التحليل والاستراتيجية:</b>\n<i>{signal.rationale}</i>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"⚠️ <b>سيتابع البوت الصفقة ويرسل تنبيه Breakeven فور تحرك السعر لتأمين الأرباح.</b>"
         )
@@ -63,7 +61,7 @@ class TelegramNotifier:
         try:
             res = requests.post(self.base_url, json=payload, timeout=10)
             if res.status_code == 200:
-                print("Telegram HTML message sent successfully.")
+                print("Telegram 3-Step message sent successfully.")
                 return True
             else:
                 logger.error(f"Telegram API Error: {res.text}")
